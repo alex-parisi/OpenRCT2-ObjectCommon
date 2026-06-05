@@ -49,7 +49,7 @@ exclude_also = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["openrct2_object_common", "tests"]
+src = ["openrct2_object_common", "scripts", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "W", "N"]
