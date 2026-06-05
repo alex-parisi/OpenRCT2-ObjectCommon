@@ -1,0 +1,24 @@
+uv.lock
+.idea/
+
+.coverage
+
+# Tool caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+*.DS_Store
+
+# Python / uv / build
+.venv/
+__pycache__/
+*.pyc
+build/
+dist/
+
+# Scratch output from tests / local runs
+*.zip
+object/
+test/
+*.parkobj
