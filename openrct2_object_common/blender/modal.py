@@ -51,7 +51,11 @@ class RenderModalBase(Operator):
 
     _status_verb = "Working"
     _invalid_prefix = "Invalid object"
-    _clean_error_types: tuple[type[Exception], ...] = ()
+    # Plain assignment, NOT an annotation: Blender's register_class() scans
+    # `__annotations__` across the MRO for bpy properties, and an annotated
+    # non-property class attribute here can trip subclass registration. Value is
+    # a tuple[type[Exception], ...] of build-error types reported verbatim.
+    _clean_error_types = ()
 
     # -- hooks ---------------------------------------------------------------
 
