@@ -40,6 +40,24 @@ def test_assemble_renders_and_zips(tmp_path):
         assert set(zf.namelist()) == {"object.json", "images.dat"}
 
 
+def test_assemble_cleans_up_temp_on_zip_failure(tmp_path):
+    work = tmp_path / "object"
+    out = tmp_path / "out"
+    parkobj = out / "thing.parkobj"
+
+    def _render_without_images_dat(work_dir):
+        # Return a valid images ref but never write images.dat, so zipping it
+        # raises and the temp-file cleanup path runs.
+        return ["$LGX:images.dat[0..0]"]
+
+    with pytest.raises(FileNotFoundError):
+        assemble_parkobj({"id": "x"}, parkobj, work, _render_without_images_dat)
+
+    assert not parkobj.exists()
+    # The temp .parkobj must have been unlinked, not left behind.
+    assert list(out.glob("*.parkobj")) == []
+
+
 def test_skip_render_reuses_previous_images(tmp_path):
     work = tmp_path / "object"
     work.mkdir()
