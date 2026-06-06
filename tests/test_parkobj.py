@@ -3,8 +3,13 @@
 import json
 import zipfile
 
+import numpy as np
 import pytest
-from openrct2_object_common.parkobj import assemble_parkobj, write_images_dat_lgx
+from openrct2_object_common.parkobj import (
+    assemble_parkobj,
+    combine_indexed_images,
+    write_images_dat_lgx,
+)
 from openrct2_x7_renderer.types import IndexedImage
 
 
@@ -60,3 +65,24 @@ def test_skip_render_rejects_missing_images_array(tmp_path):
     (work / "object.json").write_text(json.dumps({"id": "rct2.thing"}))  # no "images"
     with pytest.raises(RuntimeError, match="images"):
         assemble_parkobj({}, tmp_path / "x.parkobj", work, _render_two_pixels, skip_render=True)
+
+
+def test_combine_indexed_images_tiles_into_grid():
+    imgs = [
+        IndexedImage(1, 1, 0, 0, np.full((1, 1), v, dtype=np.uint8))
+        for v in (10, 20, 30, 40)
+    ]
+    out = combine_indexed_images(imgs, columns=2)
+    assert (out.width, out.height) == (2, 2)
+    assert out.pixels.tolist() == [[10, 20], [30, 40]]
+
+
+def test_combine_indexed_images_empty_returns_blank():
+    out = combine_indexed_images([])
+    assert (out.width, out.height) == (1, 1)
+
+
+def test_combine_indexed_images_single_no_blank_cell():
+    one = IndexedImage(1, 1, 0, 0, np.full((1, 1), 7, dtype=np.uint8))
+    out = combine_indexed_images([one], columns=2)
+    assert (out.width, out.height) == (1, 1)

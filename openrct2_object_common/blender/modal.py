@@ -18,7 +18,14 @@ import time
 import traceback
 from typing import Any
 
-from bpy.types import Operator
+try:
+    from bpy.types import Operator
+except ImportError:  # pragma: no cover
+    # Outside Blender: provide a no-op stub so this module can be imported
+    # (e.g. for type-checking or test collection) without a Blender runtime.
+    # A real operator requires bpy; this stub allows the class to be defined.
+    class Operator:  # type: ignore[no-redef]
+        pass
 
 _SPINNER_FRAMES = "|/-\\"
 

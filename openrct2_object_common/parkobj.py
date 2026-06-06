@@ -7,23 +7,61 @@ references it via ``$LGX:``, and zip the two together. The per-kind work is just
 *what* sprites to render and *what* metadata to emit; this module owns the rest.
 """
 
+import contextlib
 import json
 import logging
+import math
+import os
+import tempfile
 import zipfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from openrct2_x7_renderer.images_dat import write_images_dat
 from openrct2_x7_renderer.types import IndexedImage
 
-__all__ = ["RenderFn", "assemble_parkobj", "write_images_dat_lgx"]
+__all__ = ["RenderFn", "assemble_parkobj", "combine_indexed_images", "write_images_dat_lgx"]
 
 log = logging.getLogger(__name__)
 
 # Render the object's sprites into ``work_dir`` (writing ``images.dat``) and
 # return the object.json "images" list (the ``$LGX:`` references).
 RenderFn = Callable[[Path], list[str]]
+
+
+def combine_indexed_images(images: list[IndexedImage], columns: int = 2) -> IndexedImage:
+    """Tile IndexedImages into a single grid image, aligned by draw offset.
+
+    Each cell spans the union of every image's draw-offset bounding box, so a
+    shared sprite anchor lands at the same spot in every cell and the rotated
+    views line up. Cells fill left-to-right, top-to-bottom over a transparent
+    (palette index 0) background; ``columns`` is capped at the image count so a
+    single image doesn't leave a blank cell. Used to show all four rotated
+    preview directions in one image.
+    """
+    if not images:
+        return IndexedImage.blank(1, 1)
+    columns = max(1, min(columns, len(images)))
+    left = min(im.x_offset for im in images)
+    top = min(im.y_offset for im in images)
+    cell_w = max(im.x_offset + im.width for im in images) - left
+    cell_h = max(im.y_offset + im.height for im in images) - top
+    rows = math.ceil(len(images) / columns)
+    canvas = np.zeros((rows * cell_h, columns * cell_w), dtype=np.uint8)
+    for idx, im in enumerate(images):
+        row, col = divmod(idx, columns)
+        x = col * cell_w + (im.x_offset - left)
+        y = row * cell_h + (im.y_offset - top)
+        canvas[y : y + im.height, x : x + im.width] = im.pixels
+    return IndexedImage(
+        width=canvas.shape[1],
+        height=canvas.shape[0],
+        x_offset=0,
+        y_offset=0,
+        pixels=canvas,
+    )
 
 
 def write_images_dat_lgx(
@@ -83,6 +121,14 @@ def assemble_parkobj(
     (work_dir / "object.json").write_text(json.dumps(obj_json, indent=4))
 
     parkobj_path.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(parkobj_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.write(work_dir / "object.json", "object.json")
-        zf.write(work_dir / "images.dat", "images.dat")
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".parkobj", dir=parkobj_path.parent)
+    os.close(tmp_fd)
+    try:
+        with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.write(work_dir / "object.json", "object.json")
+            zf.write(work_dir / "images.dat", "images.dat")
+        os.replace(tmp_path, parkobj_path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise

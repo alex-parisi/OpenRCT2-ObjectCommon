@@ -40,6 +40,7 @@ addopts = "-q --cov=openrct2_object_common"
 
 [tool.coverage.run]
 source = ["openrct2_object_common"]
+omit = ["openrct2_object_common/testing.py"]
 
 [tool.coverage.report]
 exclude_also = [
@@ -63,17 +64,13 @@ select = ["E", "F", "I", "UP", "B", "W", "N"]
 [tool.mypy]
 python_version = "3.11"
 files = ["openrct2_object_common"]
+strict = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unused_configs = true
 # The Blender helpers depend on bpy (only present inside Blender), so they're
 # type-checked in the consuming add-on repos, not here.
 exclude = ["openrct2_object_common/blender/"]
-
-# openrct2-x7-renderer ships no py.typed marker, so mypy can't resolve its types.
-[[tool.mypy.overrides]]
-module = ["openrct2_x7_renderer.*"]
-ignore_missing_imports = true
 
 [build-system]
 requires = ["hatchling"]

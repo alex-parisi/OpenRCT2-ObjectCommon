@@ -12,6 +12,7 @@ last pose), which is the ``clamp_frame`` flag.
 import math
 
 import numpy as np
+from numpy.typing import NDArray
 from openrct2_x7_renderer.geometry import rotate_x, rotate_y, rotate_z
 from openrct2_x7_renderer.mesh import Mesh
 from openrct2_x7_renderer.ray_trace import SceneBuilder
@@ -20,7 +21,7 @@ from openrct2_x7_renderer.types import Model
 __all__ = ["add_model_to_scene", "orientation_to_matrix"]
 
 
-def orientation_to_matrix(orientation_deg: np.ndarray) -> np.ndarray:
+def orientation_to_matrix(orientation_deg: NDArray[np.float64]) -> NDArray[np.float64]:
     """A MeshFrame orientation ``(angle_y, angle_z, angle_x)`` in degrees as a
     ``(3, 3)`` rotation matrix, applied as ``rotate_y @ rotate_z @ rotate_x``."""
     rx, ry, rz = orientation_deg * (math.pi / 180.0)
