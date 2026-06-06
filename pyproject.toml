@@ -1,6 +1,6 @@
 [project]
 name = "OpenRCT2-ObjectCommon"
-version = "0.1.1"
+version = "0.1.2"
 description = "Shared config, CLI, .parkobj, and object.json scaffolding for OpenRCT2 object generators."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -9,7 +9,7 @@ authors = [
     { name = "Alex Parisi", email = "alex@atparisi.com" }
 ]
 dependencies = [
-    "openrct2-x7-renderer>=0.3.0",
+    "openrct2-x7-renderer>=0.3.1",
     "numpy>=1.26",
     "pillow>=10.0",
     "pyyaml>=6.0",

@@ -1,24 +1,11 @@
-"""Shared test scaffolding.
-
-The ``openrct2_object_common.blender`` submodules import ``bpy`` and
-``mathutils``, which only exist inside a running Blender. Minimal fakes are
-installed into ``sys.modules`` here — before any test module is collected — so
-the blender helpers can be imported and exercised without a Blender runtime.
-
-The fakes are intentionally tiny: ``bpy.props`` factories return inert markers
-(the property descriptors are never invoked outside Blender), and the
-``mathutils`` ``Matrix``/``Vector`` types are thin numpy wrappers covering only
-the operations the helpers actually use.
-"""
+"""Fake bpy + mathutils in sys.modules so blender helpers import without Blender."""
 
 import sys
 import types
 
 import numpy as np
 
-# ---------------------------------------------------------------------------
-# Fake mathutils — numpy-backed Matrix/Vector
-# ---------------------------------------------------------------------------
+# Fake mathutils — numpy-backed Matrix/Vector.
 
 
 class _Vector:
@@ -81,9 +68,7 @@ def _install_mathutils() -> None:
     sys.modules["mathutils"] = mod
 
 
-# ---------------------------------------------------------------------------
-# Fake bpy — types, props factories, path helper
-# ---------------------------------------------------------------------------
+# Fake bpy — types, props factories, path helper.
 
 
 class _FakeOperator:
