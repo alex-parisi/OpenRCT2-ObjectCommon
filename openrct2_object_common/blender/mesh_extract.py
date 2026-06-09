@@ -143,7 +143,10 @@ def extract_mesh(obj, depsgraph, material_fn: MaterialFn) -> Mesh | None:
                 uv = uv_layer.data[loop_idx].uv if uv_layer else (0.0, 0.0)
                 verts.append((co.x, co.y, co.z))
                 norms.append((n.x, n.y, n.z))
-                uvs.append((uv[0], uv[1]))
+                # Blender UVs use a bottom-left origin (V=0 at the bottom of the
+                # image); the renderer samples textures top-left (V=0 = row 0).
+                # Flip V so the render matches Blender's viewport.
+                uvs.append((uv[0], 1.0 - uv[1]))
                 corner.append(len(verts) - 1)
             faces.append((corner[0], corner[1], corner[2]))
             face_mats.append(min(lt.material_index, n_mats - 1))
