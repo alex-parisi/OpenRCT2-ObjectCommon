@@ -7,6 +7,8 @@ scene is needed.
 
 import numpy as np
 from openrct2_object_common.placement import add_model_to_scene, orientation_to_matrix
+from openrct2_x7_renderer.constants import MeshFlag
+from openrct2_x7_renderer.mesh import Material, Mesh
 from openrct2_x7_renderer.types import MeshFrame, Model
 
 
@@ -18,6 +20,18 @@ class _StubBuilder:
 
     def add_model(self, mesh, matrix, translation, mask):
         self.calls.append((mesh, matrix, translation, mask))
+
+
+def _mesh(*, is_ghost: bool = False) -> Mesh:
+    """A one-triangle mesh with a single (optionally ghost) material."""
+    return Mesh(
+        vertices=np.zeros((3, 3), dtype=np.float32),
+        normals=np.zeros((3, 3), dtype=np.float32),
+        uvs=np.zeros((3, 2), dtype=np.float32),
+        faces=np.array([[0, 1, 2]], dtype=np.uint32),
+        face_materials=np.array([0], dtype=np.uint32),
+        materials=[Material(is_ghost=is_ghost)],
+    )
 
 
 def test_orientation_to_matrix_zero_is_identity():
@@ -33,7 +47,7 @@ def test_orientation_to_matrix_is_orthonormal():
 
 
 def test_add_model_places_each_referenced_mesh():
-    meshes = ["mesh0", "mesh1"]
+    meshes = [_mesh(), _mesh()]
     model = Model(meshes=[
         [MeshFrame(mesh_index=0, position=np.array([1.0, 2.0, 3.0]))],
         [MeshFrame(mesh_index=1)],
@@ -41,21 +55,33 @@ def test_add_model_places_each_referenced_mesh():
     builder = _StubBuilder()
     add_model_to_scene(builder, meshes, model, mask=7)
 
-    assert [c[0] for c in builder.calls] == ["mesh0", "mesh1"]
+    assert [c[0] for c in builder.calls] == meshes
     np.testing.assert_allclose(builder.calls[0][2], [1.0, 2.0, 3.0])
     assert all(c[3] == 7 for c in builder.calls)
 
 
 def test_add_model_skips_empty_slots():
+    only = _mesh()
     model = Model(meshes=[[MeshFrame(mesh_index=-1)], [MeshFrame(mesh_index=0)]])
     builder = _StubBuilder()
-    add_model_to_scene(builder, ["only"], model)
-    assert [c[0] for c in builder.calls] == ["only"]
+    add_model_to_scene(builder, [only], model)
+    assert [c[0] for c in builder.calls] == [only]
 
 
 def test_clamp_frame_falls_back_to_last_pose():
     # Placement has 2 frames; requesting frame 5 with clamp uses the last (idx 1).
+    a, b = _mesh(), _mesh()
     model = Model(meshes=[[MeshFrame(mesh_index=0), MeshFrame(mesh_index=1)]])
     builder = _StubBuilder()
-    add_model_to_scene(builder, ["a", "b"], model, frame=5, clamp_frame=True)
-    assert [c[0] for c in builder.calls] == ["b"]
+    add_model_to_scene(builder, [a, b], model, frame=5, clamp_frame=True)
+    assert [c[0] for c in builder.calls] == [b]
+
+
+def test_add_model_marks_ghost_material_geometry():
+    # A wholly ghost placement is added once, carrying the base mask OR'd with
+    # MeshFlag.GHOST so the renderer traces through it.
+    model = Model(meshes=[[MeshFrame(mesh_index=0)]])
+    builder = _StubBuilder()
+    add_model_to_scene(builder, [_mesh(is_ghost=True)], model, mask=2)
+    assert len(builder.calls) == 1
+    assert builder.calls[0][3] == 2 | int(MeshFlag.GHOST)

@@ -13,7 +13,7 @@ import math
 
 import numpy as np
 from numpy.typing import NDArray
-from openrct2_x7_renderer.geometry import rotate_x, rotate_y, rotate_z
+from openrct2_x7_renderer.geometry import rotate_x, rotate_y, rotate_z, split_mesh_by_ghost
 from openrct2_x7_renderer.mesh import Mesh
 from openrct2_x7_renderer.ray_trace import SceneBuilder
 from openrct2_x7_renderer.types import Model
@@ -42,17 +42,16 @@ def add_model_to_scene(
     Placements whose ``mesh_index`` is ``-1`` (an empty slot) are skipped. With
     ``clamp_frame=True`` a placement with fewer frames falls back to its last
     frame (scenery's animated poses); with ``False`` the frame is indexed exactly
-    (vehicle frames are uniform across placements). ``mask`` is the per-model
-    ``MeshFlag`` bitmask (e.g. ghost / mask geometry).
+    (vehicle frames are uniform across placements). ``mask`` is the base per-model
+    ``MeshFlag`` bitmask (e.g. ghost / mask geometry); faces whose material is a
+    ghost are additionally split into their own ``MeshFlag.GHOST`` model.
     """
     for mesh_frames in model.meshes:
         idx = min(frame, len(mesh_frames) - 1) if clamp_frame else frame
         mf = mesh_frames[idx]
         if mf.mesh_index == -1:
             continue
-        builder.add_model(
-            meshes[mf.mesh_index],
-            orientation_to_matrix(mf.orientation),
-            mf.position.astype(np.float64),
-            mask,
-        )
+        matrix = orientation_to_matrix(mf.orientation)
+        position = mf.position.astype(np.float64)
+        for sub_mesh, sub_mask in split_mesh_by_ghost(meshes[mf.mesh_index], mask):
+            builder.add_model(sub_mesh, matrix, position, sub_mask)
