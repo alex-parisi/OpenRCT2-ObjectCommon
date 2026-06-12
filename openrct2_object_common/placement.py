@@ -24,8 +24,8 @@ __all__ = ["add_model_to_scene", "orientation_to_matrix"]
 def orientation_to_matrix(orientation_deg: NDArray[np.float64]) -> NDArray[np.float64]:
     """A MeshFrame orientation ``(angle_y, angle_z, angle_x)`` in degrees as a
     ``(3, 3)`` rotation matrix, applied as ``rotate_y @ rotate_z @ rotate_x``."""
-    rx, ry, rz = orientation_deg * (math.pi / 180.0)
-    return rotate_y(rx) @ rotate_z(ry) @ rotate_x(rz)
+    ry, rz, rx = orientation_deg * (math.pi / 180.0)
+    return rotate_y(ry) @ rotate_z(rz) @ rotate_x(rx)
 
 
 def add_model_to_scene(

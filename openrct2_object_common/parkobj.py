@@ -73,6 +73,8 @@ def write_images_dat_lgx(
     ``note`` is appended to the log line (e.g. ``" for 4 tiles"``). Returns the
     single-element ``["$LGX:images.dat[0..N-1]"]`` list OpenRCT2 expects.
     """
+    if not images:
+        raise ValueError("Cannot write images.dat with no sprites")
     out_path = work_dir / "images.dat"
     write_images_dat(images, out_path)
     log.info(
@@ -123,6 +125,11 @@ def assemble_parkobj(
     parkobj_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".parkobj", dir=parkobj_path.parent)
     os.close(tmp_fd)
+    # mkstemp creates the file 0o600; widen to the umask default so the
+    # delivered .parkobj has normal file permissions after os.replace.
+    umask = os.umask(0)
+    os.umask(umask)
+    os.chmod(tmp_path, 0o666 & ~umask)
     try:
         with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             zf.write(work_dir / "object.json", "object.json")

@@ -16,6 +16,7 @@ from collections.abc import Callable
 import bpy
 import numpy as np
 from mathutils import Matrix, Vector
+from openrct2_x7_renderer.constants import MaterialFlag
 from openrct2_x7_renderer.image import quantize_to_indexed, read_png
 from openrct2_x7_renderer.mesh import Material, Mesh
 from openrct2_x7_renderer.types import IndexedImage
@@ -65,8 +66,6 @@ def material_base(
     *prop_attr*: attribute name on the bpy material (e.g. ``"vg_material"``).
     *region_map*: maps region enum string → ``(flag_bits, region_id)``.
     """
-    from openrct2_x7_renderer.constants import MaterialFlag
-
     m = Material()
     if bmat is None:
         return m, None

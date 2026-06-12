@@ -1,6 +1,6 @@
 [project]
 name = "OpenRCT2-ObjectCommon"
-version = "0.1.2"
+version = "0.2.0"
 description = "Shared config, CLI, .parkobj, and object.json scaffolding for OpenRCT2 object generators."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -9,7 +9,7 @@ authors = [
     { name = "Alex Parisi", email = "alex@atparisi.com" }
 ]
 dependencies = [
-    "openrct2-x7-renderer>=0.3.3",
+    "openrct2-x7-renderer>=0.3.4",
     "numpy>=1.26",
     "pillow>=10.0",
     "pyyaml>=6.0",
@@ -19,8 +19,8 @@ dependencies = [
 Homepage = "https://github.com/alex-parisi/OpenRCT2-ObjectCommon"
 Repository = "https://github.com/alex-parisi/OpenRCT2-ObjectCommon"
 
-# The Blender helpers (openrct2_object_common.blender.modal) import bpy; the rest
-# of the package does not. Only the add-ons need this extra.
+# The Blender helpers (openrct2_object_common.blender, except .lights) import
+# bpy; the rest of the package does not. Only the add-ons need this extra.
 [project.optional-dependencies]
 blender = ["bpy>=4.0"]
 

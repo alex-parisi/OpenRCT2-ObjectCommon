@@ -43,7 +43,7 @@ def lights_from_items(items: Iterable[_LightItem]) -> list[Light]:
     rig = [
         Light(
             type=LIGHT_TYPE_MAP[item.type],
-            shadow=int(item.shadow),
+            shadow=bool(item.shadow),
             direction=normalize_direction(list(item.direction)),
             intensity=item.strength,
         )

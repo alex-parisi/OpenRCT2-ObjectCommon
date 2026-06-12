@@ -1,6 +1,7 @@
 """Tests for .parkobj assembly and the images.dat helper."""
 
 import json
+import os
 import zipfile
 
 import numpy as np
@@ -24,6 +25,13 @@ def test_write_images_dat_lgx_writes_blob_and_ref(tmp_path):
     refs = write_images_dat_lgx([IndexedImage.blank(1, 1)], tmp_path)
     assert refs == ["$LGX:images.dat[0..0]"]
     assert (tmp_path / "images.dat").exists()
+
+
+def test_write_images_dat_lgx_rejects_empty_list(tmp_path):
+    # An empty list would otherwise emit a malformed "$LGX:images.dat[0..-1]".
+    with pytest.raises(ValueError, match="no sprites"):
+        write_images_dat_lgx([], tmp_path)
+    assert not (tmp_path / "images.dat").exists()
 
 
 def test_assemble_renders_and_zips(tmp_path):
@@ -56,6 +64,19 @@ def test_assemble_cleans_up_temp_on_zip_failure(tmp_path):
     assert not parkobj.exists()
     # The temp .parkobj must have been unlinked, not left behind.
     assert list(out.glob("*.parkobj")) == []
+
+
+def test_assemble_parkobj_respects_umask(tmp_path):
+    # The temp file behind the atomic replace is mkstemp'd (0o600); the final
+    # .parkobj must carry normal umask-derived permissions instead.
+    work = tmp_path / "object"
+    parkobj = tmp_path / "thing.parkobj"
+    old_umask = os.umask(0o022)
+    try:
+        assemble_parkobj({"id": "rct2.thing"}, parkobj, work, _render_two_pixels)
+    finally:
+        os.umask(old_umask)
+    assert parkobj.stat().st_mode & 0o777 == 0o644
 
 
 def test_skip_render_reuses_previous_images(tmp_path):

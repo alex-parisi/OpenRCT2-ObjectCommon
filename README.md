@@ -91,8 +91,9 @@ def export_to(obj, context, parkobj_path, work_dir, skip_render=False):
 
 ### Blender helpers
 
-The `blender` subpackage imports `bpy` (only `blender.modal` — `blender.lights`
-does not), so install the extra when working with it outside Blender:
+The `blender` subpackage imports `bpy` (`blender.modal`, `blender.props`, and
+`blender.mesh_extract` — `blender.lights` does not), so install the extra when
+working with it outside Blender:
 
 ```bash
 pip install "OpenRCT2-ObjectCommon[blender]"
