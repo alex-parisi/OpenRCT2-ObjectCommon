@@ -46,6 +46,28 @@ def scale_preset_update(self, _context):
         self.units_per_tile = value
 
 
+# Palette dithering modes. Identifiers match the strings the renderer's
+# ``Context`` / ``make_context`` accept. Floyd–Steinberg is the historical
+# default (highest fidelity); Bayer is screen-anchored so its pattern stays
+# stable across an animation's frames, avoiding the per-frame "swimming" of
+# error diffusion.
+DITHER_MODE_ITEMS = [
+    (
+        "floyd_steinberg",
+        "Floyd–Steinberg",
+        "Highest fidelity, but the dither pattern shifts between animation frames",
+    ),
+    (
+        "bayer",
+        "Bayer (frame-stable)",
+        "Ordered dither locked to screen position; stable across animation frames",
+    ),
+    ("none", "None", "No dithering; flat palette quantisation"),
+]
+
+DEFAULT_DITHER_MODE = "floyd_steinberg"
+
+
 LIGHT_TYPE_ITEMS = [
     ("diffuse", "Diffuse", "Directional diffuse light"),
     ("specular", "Specular", "Specular highlight light"),
