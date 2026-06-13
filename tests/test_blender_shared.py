@@ -50,8 +50,10 @@ def test_shared_light_propertygroup_defined():
 def test_dither_mode_items_match_renderer_modes():
     # The add-on enum identifiers must be exactly the strings make_context /
     # Context accept, and the default must be one of them.
+    from openrct2_x7_renderer.ray_trace import DITHER_MODES
+
     ids = {ident for ident, _label, _desc in props.DITHER_MODE_ITEMS}
-    assert ids == {"none", "floyd_steinberg", "bayer"}
+    assert ids == set(DITHER_MODES)
     assert props.DEFAULT_DITHER_MODE in ids
 
 

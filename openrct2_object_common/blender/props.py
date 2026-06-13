@@ -62,6 +62,11 @@ DITHER_MODE_ITEMS = [
         "Bayer (frame-stable)",
         "Ordered dither locked to screen position; stable across animation frames",
     ),
+    (
+        "blue_noise",
+        "Blue noise (frame-stable)",
+        "Like Bayer but a blue-noise mask; less perceptible residual motion under rotation",
+    ),
     ("none", "None", "No dithering; flat palette quantisation"),
 ]
 
