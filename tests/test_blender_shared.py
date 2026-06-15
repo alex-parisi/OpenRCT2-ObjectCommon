@@ -7,8 +7,10 @@ collection), so these modules import and run without a Blender runtime.
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 from mathutils import Matrix, Vector  # provided by conftest fake
-from openrct2_object_common.blender import mesh_extract, props
+from openrct2_object_common.blender import bake, mesh_extract, props
+from openrct2_object_common.blender.mesh_extract import SceneError
 from openrct2_x7_renderer.constants import MaterialFlag
 
 # ===========================================================================
@@ -315,3 +317,79 @@ def test_load_preview_returns_none_when_both_fail(monkeypatch):
     monkeypatch.setattr(mesh_extract, "read_png", _boom)
     monkeypatch.setattr(mesh_extract, "quantize_to_indexed", _boom)
     assert mesh_extract.load_preview("/img.png") is None
+
+
+# ===========================================================================
+# bake.py
+# ===========================================================================
+
+
+def test_image_to_texture_flips_rows_and_drops_alpha():
+    # 2x2 RGBA float image, Blender's bottom-up row order: bottom red, top blue.
+    pixels = [
+        1.0, 0.0, 0.0, 1.0,  1.0, 0.0, 0.0, 1.0,  # bottom row
+        0.0, 0.0, 1.0, 1.0,  0.0, 0.0, 1.0, 1.0,  # top row
+    ]
+    image = SimpleNamespace(size=(2, 2), pixels=pixels)
+    tex = bake._image_to_texture(image)
+    assert tex.width == 2
+    assert tex.height == 2
+    assert tex.pixels.shape == (2, 2, 3)
+    # After the V-flip, row 0 is the top (blue), row 1 the bottom (red).
+    assert np.allclose(tex.pixels[0, 0], [0.0, 0.0, 1.0])
+    assert np.allclose(tex.pixels[1, 0], [1.0, 0.0, 0.0])
+
+
+class _BakeMat:
+    # A real bpy Material is hashable (by identity); SimpleNamespace is not,
+    # so use a plain class for materials used as dict keys.
+    def __init__(self, name, *, on, res="256"):
+        self.name = name
+        self.vg_material = SimpleNamespace(bake_procedural=on, bake_resolution=res)
+
+
+def _bake_mat(name, *, on, res="256"):
+    return _BakeMat(name, on=on, res=res)
+
+
+def _bake_obj(materials, *, has_uv):
+    return SimpleNamespace(
+        name="Cube",
+        type="MESH",
+        material_slots=[SimpleNamespace(material=m) for m in materials],
+        data=SimpleNamespace(uv_layers=[object()] if has_uv else []),
+    )
+
+
+def test_bake_materials_no_opted_in_materials_returns_empty():
+    obj = _bake_obj([_bake_mat("Plain", on=False)], has_uv=True)
+    assert bake.bake_materials(SimpleNamespace(), [obj], prop_attr="vg_material") == {}
+
+
+def test_bake_materials_skips_non_mesh_objects():
+    obj = SimpleNamespace(type="EMPTY")
+    assert bake.bake_materials(SimpleNamespace(), [obj], prop_attr="vg_material") == {}
+
+
+def test_bake_materials_missing_uv_raises_guidance():
+    obj = _bake_obj([_bake_mat("Wood", on=True)], has_uv=False)
+    with pytest.raises(SceneError, match="UV map"):
+        bake.bake_materials(SimpleNamespace(), [obj], prop_attr="vg_material")
+
+
+class _FakeLayout:
+    def __init__(self):
+        self.props: list[str] = []
+
+    def prop(self, _data, name):
+        self.props.append(name)
+
+
+def test_draw_bake_shows_resolution_only_when_enabled():
+    on = _FakeLayout()
+    bake.draw_bake(on, SimpleNamespace(bake_procedural=True, bake_resolution="256"))
+    assert on.props == ["bake_procedural", "bake_resolution"]
+
+    off = _FakeLayout()
+    bake.draw_bake(off, SimpleNamespace(bake_procedural=False, bake_resolution="256"))
+    assert off.props == ["bake_procedural"]
