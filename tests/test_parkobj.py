@@ -9,9 +9,18 @@ import pytest
 from openrct2_object_common.parkobj import (
     assemble_parkobj,
     combine_indexed_images,
+    parkobj_filename,
     write_images_dat_lgx,
 )
 from openrct2_x7_renderer.types import IndexedImage
+
+
+def test_parkobj_filename_uses_id_and_sanitises_slashes():
+    assert parkobj_filename("alex.coaster/wooden", default="x") == "alex.coaster_wooden.parkobj"
+
+
+def test_parkobj_filename_falls_back_to_default_when_empty():
+    assert parkobj_filename("", default="vehicle") == "vehicle.parkobj"
 
 
 def _render_two_pixels(work_dir):

@@ -34,6 +34,13 @@ class _Vector:
         return _Vector(self.v / norm)
 
 
+class _Euler:
+    def __init__(self, x: float, y: float, z: float):
+        self.x = x
+        self.y = y
+        self.z = z
+
+
 class _Matrix:
     def __init__(self, rows):
         self.m = np.asarray(rows, dtype=np.float64)
@@ -59,6 +66,16 @@ class _Matrix:
 
     def transposed(self) -> "_Matrix":
         return _Matrix(self.m.T)
+
+    def to_euler(self, order: str) -> _Euler:
+        # Only the renderer's "YZX" convention is needed: the matrix is taken to
+        # be Ry(y) @ Rz(z) @ Rx(x), inverted back to (x, y, z) radians.
+        assert order == "YZX", f"fake to_euler only supports YZX, got {order}"
+        m = self.m[:3, :3]
+        z = float(np.arcsin(np.clip(m[1, 0], -1.0, 1.0)))
+        x = float(np.arctan2(-m[1, 2], m[1, 1]))
+        y = float(np.arctan2(-m[2, 0], m[0, 0]))
+        return _Euler(x, y, z)
 
 
 def _install_mathutils() -> None:
@@ -93,6 +110,22 @@ def _install_bpy() -> None:
     bpy_types = types.ModuleType("bpy.types")
     bpy_types.Operator = _FakeOperator
     bpy_types.PropertyGroup = _FakePropertyGroup
+    # ID-datablock types referenced as PointerProperty(type=...) targets at class
+    # body evaluation (e.g. SharedMaterialSettings.texture -> bpy.types.Image).
+    bpy_types.Image = type("Image", (), {})
+
+    # The viewport progress overlay registers/unregisters a draw handler here;
+    # inert stubs let ProgressOverlay.add()/remove() run without a GPU runtime.
+    class _SpaceView3D:
+        @staticmethod
+        def draw_handler_add(fn, args, region, kind):
+            return ("draw_handler", fn, args, region, kind)
+
+        @staticmethod
+        def draw_handler_remove(handle, region):
+            pass
+
+    bpy_types.SpaceView3D = _SpaceView3D
 
     bpy_props = types.ModuleType("bpy.props")
     for name in (
@@ -110,14 +143,28 @@ def _install_bpy() -> None:
     bpy_path = types.ModuleType("bpy.path")
     bpy_path.abspath = lambda p: p
 
+    # Inert register/unregister; tests that care about call order monkeypatch these.
+    bpy_utils = types.ModuleType("bpy.utils")
+    bpy_utils.register_class = lambda cls: None
+    bpy_utils.unregister_class = lambda cls: None
+
+    # bpy.data.images.remove — used when a temp image copy is freed after writing
+    # it to disk (save_bpy_image_png); inert here.
+    bpy_data = types.ModuleType("bpy.data")
+    bpy_data.images = types.SimpleNamespace(remove=lambda img: None)
+
     bpy.types = bpy_types
     bpy.props = bpy_props
     bpy.path = bpy_path
+    bpy.utils = bpy_utils
+    bpy.data = bpy_data
 
     sys.modules["bpy"] = bpy
     sys.modules["bpy.types"] = bpy_types
     sys.modules["bpy.props"] = bpy_props
     sys.modules["bpy.path"] = bpy_path
+    sys.modules["bpy.utils"] = bpy_utils
+    sys.modules["bpy.data"] = bpy_data
 
 
 # Install before any test module imports the blender helpers.

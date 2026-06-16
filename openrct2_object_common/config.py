@@ -15,6 +15,7 @@ from openrct2_x7_renderer.config import (  # noqa: F401
     require_int,
     require_number,
     require_string,
+    resolve_asset_path,
 )
 
 __all__ = [
@@ -32,4 +33,5 @@ __all__ = [
     "require_int",
     "require_number",
     "require_string",
+    "resolve_asset_path",
 ]

@@ -22,9 +22,24 @@ import numpy as np
 from openrct2_x7_renderer.images_dat import write_images_dat
 from openrct2_x7_renderer.types import IndexedImage
 
-__all__ = ["RenderFn", "assemble_parkobj", "combine_indexed_images", "write_images_dat_lgx"]
+__all__ = [
+    "RenderFn",
+    "assemble_parkobj",
+    "combine_indexed_images",
+    "parkobj_filename",
+    "write_images_dat_lgx",
+]
 
 log = logging.getLogger(__name__)
+
+
+def parkobj_filename(object_id: str, *, default: str) -> str:
+    """The ``.parkobj`` filename for an object id.
+
+    Slashes are replaced with ``_`` so the id is safe as a single filename, and
+    *default* is used when the id is empty.
+    """
+    return (object_id or default).replace("/", "_") + ".parkobj"
 
 # Render the object's sprites into ``work_dir`` (writing ``images.dat``) and
 # return the object.json "images" list (the ``$LGX:`` references).

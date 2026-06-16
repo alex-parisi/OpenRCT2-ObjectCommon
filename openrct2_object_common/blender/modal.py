@@ -13,10 +13,16 @@ package's ``blender`` extra (``pip install OpenRCT2-ObjectCommon[blender]``) whe
 type-checking or testing it outside Blender.
 """
 
+import os
+import shutil
+import tempfile
 import threading
 import time
 import traceback
 from typing import Any
+
+from .lights import lights_from_items
+from .progress_overlay import ProgressOverlay
 
 try:
     from bpy.types import Operator
@@ -28,6 +34,32 @@ except ImportError:  # pragma: no cover
         pass
 
 _SPINNER_FRAMES = "|/-\\"
+
+
+def show_test_sprite(operator, context, png):
+    """Show a freshly rendered test sprite in an open Image Editor.
+
+    Shared by every add-on's test-render operator: ``png`` is the file the render
+    just wrote (or ``None``). Reports a warning and returns ``{"CANCELLED"}`` when
+    nothing was produced; otherwise loads the image, assigns it to the first open
+    Image Editor area (if any), reports it and returns ``{"FINISHED"}``.
+
+    ``operator`` is the calling Operator (used for ``report``); kept as a plain
+    argument so both the modal test-render operators and the vehicle add-on's
+    non-modal one can share this.
+    """
+    import bpy  # local: this helper only runs inside Blender (see module docstring)
+
+    if not png or not os.path.exists(png):
+        operator.report({"WARNING"}, "Render produced no sprite")
+        return {"CANCELLED"}
+    img = bpy.data.images.load(png, check_existing=False)
+    for area in context.screen.areas:
+        if area.type == "IMAGE_EDITOR":
+            area.spaces.active.image = img
+            break
+    operator.report({"INFO"}, f"Test sprite loaded: {img.name}")
+    return {"FINISHED"}
 
 
 class RenderModalBase(Operator):
@@ -77,6 +109,51 @@ class RenderModalBase(Operator):
 
     def _on_success(self, context):  # pragma: no cover - subclass hook
         raise NotImplementedError
+
+    # -- shared _prepare helper ----------------------------------------------
+
+    def _read_render_settings(self, settings) -> None:
+        """Stash the render-affecting scene settings on ``self`` (main thread).
+
+        Reads the custom lighting rig + dither config off a settings
+        PropertyGroup into ``self._lights`` / ``self._dither`` /
+        ``self._dither_stability`` so the worker thread (``_render``) can build
+        the render Context without touching bpy data. Subclasses call this from
+        ``_prepare`` with their scene settings group.
+        """
+        self._lights = lights_from_items(settings.lights)
+        self._dither = settings.dither
+        self._dither_stability = settings.dither_stability
+
+    def _make_context(self, units_per_tile, *, test: bool = False):
+        """Build a render Context from the settings stashed by
+        :meth:`_read_render_settings` (worker thread; touches no bpy data).
+
+        ``test`` zooms in for a single-viewpoint preview; exports pass ``False``.
+        Shared so every add-on's ``_render`` builds its Context the same way
+        instead of repeating the lights/dither/stability wiring.
+        """
+        from openrct2_object_common.cli import make_context
+
+        return make_context(
+            self._lights,
+            units_per_tile,
+            test,
+            dither=self._dither,
+            stability=self._dither_stability,
+        )
+
+    def _elapsed_suffix(self) -> str:
+        """``"12s"``, or ``"12s (build 3s)"`` when the build phase was non-trivial.
+
+        Seconds since the render started, plus the build-phase time when it is
+        worth mentioning (animated / large builds; a static build is instant and
+        "(build 0s)" would be noise). Shared by the status readout and the
+        operators' success reports.
+        """
+        elapsed = int(time.monotonic() - self._start_time)
+        build = f" (build {self._build_secs}s)" if self._build_secs else ""
+        return f"{elapsed}s{build}"
 
     # -- worker-facing -------------------------------------------------------
 
@@ -137,21 +214,18 @@ class RenderModalBase(Operator):
         return {"PASS_THROUGH"}
 
     def _set_status(self, context) -> None:
-        elapsed = int(time.monotonic() - self._start_time)
-        # Only mention the build time when it was non-trivial (animated / large
-        # builds); a static build is instant and "(build 0s)" would be noise.
-        build = f" (build {self._build_secs}s)" if self._build_secs else ""
+        suffix = self._elapsed_suffix()
         wm = context.window_manager
         if self._total_units > 0:
             pct = int(100 * self._done_units / self._total_units)
             context.workspace.status_text_set(
-                f"{self._status_verb}... {pct}% {elapsed}s{build}"
+                f"{self._status_verb}... {pct}% {suffix}"
             )
             wm.progress_update(self._done_units / self._total_units)
         else:
             glyph = _SPINNER_FRAMES[self._spinner_step % len(_SPINNER_FRAMES)]
             context.workspace.status_text_set(
-                f"{glyph} {self._status_verb}... {elapsed}s{build}"
+                f"{glyph} {self._status_verb}... {suffix}"
             )
             wm.progress_update((self._spinner_step % 20) / 20.0)
 
@@ -169,3 +243,110 @@ class RenderModalBase(Operator):
             )
             return {"CANCELLED"}
         return self._on_success(context)
+
+
+class TestRenderModalBase(RenderModalBase):
+    """Render a quick test sprite to a temp dir and show it in the Image Editor.
+
+    Owns the throwaway-directory lifecycle every add-on's Test Render shares: the
+    PNG must outlive the operator (the Image Editor reads it from disk), so the
+    previous run's directory is removed only when the next render replaces it.
+    The directory is tracked per operator subclass.
+
+    Subclasses set ``_tmp_prefix`` and implement ``_render`` -- writing into
+    ``self._tmp`` and setting ``self._png`` to the sprite path to display. The
+    add-on's intermediate base still supplies ``_build`` and the render-settings
+    read (via ``_read_render_settings`` in its ``_prepare``), reached here through
+    ``super()._prepare``.
+    """
+
+    _status_verb = "Rendering test"
+    _tmp_prefix = "test_"
+    # Per-subclass: the previous run's output dir, removed on the next render.
+    # ``type(self)`` writes route to the concrete subclass, so add-ons don't
+    # clobber each other's directory.
+    _last_test_dir: str | None = None
+
+    def _prepare(self, context, payload) -> None:
+        super()._prepare(context, payload)
+        cls = type(self)
+        if cls._last_test_dir is not None:
+            shutil.rmtree(cls._last_test_dir, ignore_errors=True)
+        self._tmp = tempfile.mkdtemp(prefix=self._tmp_prefix)
+        cls._last_test_dir = self._tmp
+        self._png = None
+
+    def _on_success(self, context):
+        return show_test_sprite(self, context, self._png)
+
+
+class ExportParkobjModalBase(RenderModalBase):
+    """Render every sprite off-thread and write one ``.parkobj`` via a file dialog.
+
+    Owns the shared single-object export flow: a file-select dialog defaulting the
+    filename from the object id, a throwaway work dir, work-dir cleanup, and the
+    success report. Subclasses declare the ``filepath`` / ``filename_ext`` /
+    ``filter_glob`` bpy properties, set ``_tmp_prefix``, and implement
+    ``_default_filename`` and ``_render`` (driving their exporter against
+    ``self._parkobj`` / ``self._work``); the add-on's intermediate base supplies
+    ``_build`` and the render-settings read, reached through ``super()._prepare``.
+
+    Every parkobj export also gets the in-viewport progress bar
+    (:class:`ProgressOverlay`): it is added in ``_prepare``, fed by
+    :meth:`set_progress` (the same calls that drive the status-bar percentage),
+    repainted from ``_set_status``, and removed in ``_finish``.
+    """
+
+    _status_verb = "Exporting .parkobj"
+    _tmp_prefix = "export_"
+
+    def _default_filename(self, context) -> str:  # pragma: no cover - subclass hook
+        raise NotImplementedError
+
+    def invoke(self, context, event):
+        if not self.filepath:
+            self.filepath = self._default_filename(context)
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+    def _prepare(self, context, payload) -> None:
+        super()._prepare(context, payload)
+        import bpy  # local: this helper only runs inside Blender (see module docstring)
+
+        self._parkobj = bpy.path.abspath(self.filepath)
+        self._work = tempfile.mkdtemp(prefix=self._tmp_prefix)
+        # In-viewport progress bar; the shared base also drives a status-bar
+        # percentage from the same set_progress() calls.
+        self._overlay = ProgressOverlay()
+        self._overlay.add()
+
+    def set_progress(self, done: int, total: int) -> None:
+        super().set_progress(done, total)
+        overlay = getattr(self, "_overlay", None)
+        if overlay is not None:
+            overlay.done = done
+            overlay.total = total
+
+    def _set_status(self, context) -> None:
+        super()._set_status(context)
+        overlay = getattr(self, "_overlay", None)
+        if overlay is not None:
+            overlay.tag_redraw(context)
+
+    def _finish(self, context):
+        overlay = getattr(self, "_overlay", None)
+        if overlay is not None:
+            overlay.remove()
+            overlay.tag_redraw(context)
+        # The work dir is a render scratch space; drop it once the worker is
+        # joined (super()._finish joins it), whether the export succeeded or not.
+        result = super()._finish(context)
+        work = getattr(self, "_work", None)
+        if work is not None:
+            shutil.rmtree(work, ignore_errors=True)
+        return result
+
+    def _on_success(self, context):
+        name = os.path.basename(self._parkobj)
+        self.report({"INFO"}, f"Exported {name} in {self._elapsed_suffix()}")
+        return {"FINISHED"}
