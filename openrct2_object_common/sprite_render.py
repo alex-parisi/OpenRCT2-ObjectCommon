@@ -24,6 +24,7 @@ __all__ = [
     "add_split_ghost",
     "center_in_box",
     "corner_anchors",
+    "fit_in_box",
     "render_corner_anchored_rotations",
     "render_corner_anchored_view",
     "render_scene_view",
@@ -162,6 +163,51 @@ def trim(img: IndexedImage, *, transparent: int = TRANSPARENT_INDEX) -> IndexedI
         y_offset=img.y_offset + r0,
         pixels=np.ascontiguousarray(img.pixels[r0:r1, c0:c1]),
     )
+
+
+def _nearest_downscale(pixels: NDArray[np.uint8], width: int, height: int) -> NDArray[np.uint8]:
+    """Nearest-neighbour resample of a palette-index array to ``width`` x ``height``.
+
+    Picks existing indices (no blending) so remap regions and other special
+    palette slots survive the shrink intact -- a Lanczos/area resample would
+    average indices into meaningless colours.
+    """
+    src_h, src_w = pixels.shape
+    ys = ((np.arange(height) + 0.5) * src_h / height).astype(np.intp).clip(0, src_h - 1)
+    xs = ((np.arange(width) + 0.5) * src_w / width).astype(np.intp).clip(0, src_w - 1)
+    return np.ascontiguousarray(pixels[ys][:, xs])
+
+
+def fit_in_box(
+    img: IndexedImage,
+    box_w: int,
+    box_h: int,
+    *,
+    draw: tuple[int, int] = (0, 0),
+    transparent: int = TRANSPARENT_INDEX,
+) -> IndexedImage:
+    """Trim, shrink-to-fit, and centre ``img`` in a ``box_w`` x ``box_h`` UI box.
+
+    Like :func:`center_in_box`, but first crops transparent borders and shrinks
+    an oversized sprite (preserving aspect ratio) so its whole content fits the
+    box -- otherwise the window clips a centred view sprite to the box and shows
+    only its middle. The shrink is nearest-neighbour in palette-index space, so
+    remap regions stay intact and the preview still recolours in-game; content
+    already within the box keeps its pixels and is only re-anchored.
+    """
+    content = trim(img, transparent=transparent)
+    scale = min(box_w / content.width, box_h / content.height, 1.0)
+    if scale < 1.0:
+        width = max(1, round(content.width * scale))
+        height = max(1, round(content.height * scale))
+        content = IndexedImage(
+            width=width,
+            height=height,
+            x_offset=0,
+            y_offset=0,
+            pixels=_nearest_downscale(content.pixels, width, height),
+        )
+    return center_in_box(content, box_w, box_h, draw=draw)
 
 
 def center_in_box(

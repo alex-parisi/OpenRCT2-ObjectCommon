@@ -11,6 +11,7 @@ from openrct2_object_common.sprite_render import (
     add_split_ghost,
     center_in_box,
     corner_anchors,
+    fit_in_box,
     render_corner_anchored_rotations,
     render_corner_anchored_view,
     render_scene_view,
@@ -191,3 +192,36 @@ def test_center_in_box_subtracts_draw_origin():
 def test_center_in_box_shares_pixels():
     img = IndexedImage.blank(2, 2)
     assert center_in_box(img, 10, 10).pixels is img.pixels
+
+
+def test_fit_in_box_keeps_small_content_and_centres():
+    img = IndexedImage(20, 10, 0, 0, np.ones((10, 20), dtype=np.uint8))
+    out = fit_in_box(img, 100, 100)
+    assert (out.width, out.height) == (20, 10)
+    assert (out.x_offset, out.y_offset) == ((100 - 20) // 2, (100 - 10) // 2)
+    np.testing.assert_array_equal(out.pixels, img.pixels)
+
+
+def test_fit_in_box_trims_before_fitting():
+    pixels = np.zeros((40, 40), dtype=np.uint8)
+    pixels[5:15, 8:28] = 7  # a 20x10 opaque block in a transparent field
+    out = fit_in_box(IndexedImage(40, 40, 0, 0, pixels), 100, 100)
+    assert (out.width, out.height) == (20, 10)
+    assert (out.x_offset, out.y_offset) == ((100 - 20) // 2, (100 - 10) // 2)
+
+
+def test_fit_in_box_shrinks_oversized_content_preserving_aspect():
+    img = IndexedImage(200, 100, 0, 0, np.ones((100, 200), dtype=np.uint8))
+    out = fit_in_box(img, 50, 50)
+    # Wider than tall: width hits the box, height follows the 2:1 aspect.
+    assert (out.width, out.height) == (50, 25)
+    assert (out.x_offset, out.y_offset) == (0, (50 - 25) // 2)
+
+
+def test_fit_in_box_shrink_preserves_palette_indices():
+    # Nearest-neighbour keeps real indices (e.g. remap colours) -- it never
+    # averages two indices into a third, meaningless one.
+    rng = np.random.default_rng(0)
+    pixels = rng.integers(200, 214, size=(200, 200), dtype=np.uint8)
+    out = fit_in_box(IndexedImage(200, 200, 0, 0, pixels), 40, 40)
+    assert set(np.unique(out.pixels)).issubset(set(np.unique(pixels)))
